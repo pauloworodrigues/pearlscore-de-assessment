@@ -1,0 +1,77 @@
+# Runs the orchestration DAG for real, inside Linux containers -- the
+# genuine end-to-end verification that airflow/dags/nordstack_dbt_dag.py
+# actually works, sidestepping a hard platform wall: Airflow's
+# SubprocessHook (what every BashOperator runs through) unconditionally
+# passes preexec_fn to subprocess.Popen, which Python refuses outright on
+# native Windows. That's not a bug in this DAG -- Airflow's own project
+# position is that native Windows isn't a supported target at all (see
+# the RuntimeWarning Airflow itself prints on startup); WSL2 or containers
+# are the documented way around it. This file takes the containers route,
+# since Docker Desktop was already available on this machine.
+#
+# A SEPARATE compose file, layered on top of docker-compose.yml, rather
+# than added to it -- docker-compose.yml itself stays exactly as given,
+# see docker-compose.override.yml's own comment for why. Compose merges
+# multiple -f files (and shares one network) automatically:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.airflow.yml up
+#
+# This connects to the SAME Postgres container docker-compose.yml already
+# defines (by its service name, `postgres`, on the Docker network --
+# see airflow/docker/profiles.yml for why that's a different host/port
+# than the one in the main profiles.yml.example) -- same database, same
+# data the host's own dbt/dlt commands already write to.
+#
+# dbt itself is installed into the Airflow image at container start via
+# _PIP_ADDITIONAL_REQUIREMENTS -- a feature built into the official
+# apache/airflow image's entrypoint, explicitly documented upstream as
+# fine for local/dev use and NOT recommended for production (a real
+# deployment would bake a custom image with dbt-core/dbt-postgres pinned
+# in its own requirements file instead, so a container never depends on
+# reaching PyPI at startup).
+#
+# mailhog catches the alert email so it can actually be *seen* landing --
+# not just trusted to have sent -- via its web UI at localhost:8025,
+# without needing real SMTP credentials.
+
+services:
+  airflow:
+    image: apache/airflow:2.11.2-python3.11
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # No AIRFLOW__CORE__EXECUTOR override: `airflow standalone` picks
+      # SequentialExecutor + its own SQLite metadata DB automatically
+      # when none is configured, which is exactly right for a one-off
+      # local verification run like this. (LocalExecutor was tried
+      # first and rejected outright by Airflow itself -- it refuses to
+      # run on SQLite -- which would mean also standing up a Postgres
+      # database for Airflow's OWN metadata, on top of the one dbt
+      # already writes to below. Not worth the extra moving part here.)
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/nordstack/airflow/dags
+      _PIP_ADDITIONAL_REQUIREMENTS: "dbt-core==1.* dbt-postgres==1.*"
+
+      # Consumed by nordstack_dbt_dag.py itself -- see its docstring.
+      DBT_PROJECT_DIR: /opt/nordstack/nordstack_analytics
+      DBT_PROFILES_DIR: /opt/nordstack/airflow/docker   # dir containing profiles.yml, not the file itself
+      DBT_EXECUTABLE_PATH: dbt
+      NORDSTACK_ALERT_EMAIL: you@example.com
+
+      # mailhog: a throwaway SMTP catcher, not real credentials.
+      AIRFLOW__SMTP__SMTP_HOST: mailhog
+      AIRFLOW__SMTP__SMTP_PORT: 1025
+      AIRFLOW__SMTP__SMTP_STARTTLS: "False"
+      AIRFLOW__SMTP__SMTP_SSL: "False"
+      AIRFLOW__SMTP__SMTP_MAIL_FROM: airflow@nordstack.local
+    volumes:
+      - .:/opt/nordstack
+    ports:
+      - "8080:8080"   # Airflow UI
+    command: standalone   # single-container dev mode: scheduler + webserver + triggerer, prints the admin password to logs on first run
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "8025:8025"   # web UI: http://localhost:8025 -- see the alert email land, for real

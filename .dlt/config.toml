@@ -1,0 +1,5 @@
+# Non-secret dlt configuration. Committed to the repo — nothing here needs
+# to be hidden, unlike secrets.toml next to it.
+
+[runtime]
+log_level = "INFO"

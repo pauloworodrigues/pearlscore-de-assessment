@@ -1,0 +1,28 @@
+# Template for dbt's connection profile. This is NOT read from the repo —
+# dbt looks for profiles.yml at ~/.dbt/profiles.yml by default (a
+# deliberate dbt convention: credentials live outside any project
+# directory, so they can never end up committed by accident). Copy this
+# file there and fill in your own values:
+#
+#   mkdir -p ~/.dbt && cp profiles.yml.example ~/.dbt/profiles.yml
+#
+# If you're on a machine where local Postgres already owns 5432, use a
+# gitignored docker-compose.override.yml to remap the container's host
+# port (see that file's own comment for the pattern) and point this at
+# whatever you remapped it to — otherwise 5432 matches docker-compose.yml
+# as given.
+
+nordstack_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: localhost
+      port: 5432
+      user: dbt_user
+      password: dbt_password
+      dbname: analytics
+      schema: dbt_dev     # personal dev schema so runs don't collide;
+                           # override with --target or your own outputs
+                           # block if working alongside others.
+      threads: 4

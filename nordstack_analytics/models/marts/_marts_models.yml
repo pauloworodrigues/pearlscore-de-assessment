@@ -1,0 +1,98 @@
+version: 2
+
+models:
+  - name: mart_mrr_by_month_plan
+    description: >
+      Monthly recurring revenue by calendar month and plan. MRR here
+      means the sum of monthly_price across every subscription active
+      at any point during that month — not actual collected invoice
+      amounts (a subscription-based recurring-revenue view, not a cash
+      view). See int_subscriptions__monthly for how "active this month"
+      is defined, including how the S00034 effective-end-date situation
+      is handled.
+    columns:
+      - name: month_start
+        description: First day of the calendar month this row reports on.
+        tests:
+          - not_null
+
+      - name: plan_name
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['starter', 'growth', 'scale']
+
+      - name: mrr
+        description: Total monthly recurring revenue for this plan in this month.
+        tests:
+          - not_null
+
+  - name: mart_customer_ltv
+    description: >
+      Customer lifetime value, defined as realized revenue (sum of paid
+      invoices only — not a predictive/forward-looking LTV, see
+      int_customers__revenue for why), alongside country, plan_mix, and
+      current_subscription_status (int_customers__subscription_summary)
+      per the brief's requirement for this business question.
+      pending_revenue_eur and failed_revenue_eur are surfaced separately
+      as context, not folded into ltv. Every customer appears, including
+      those with zero billing activity.
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - not_null
+
+      - name: country
+        description: >
+          Customer's country. NULL where blank in the raw data (planted
+          defect #2) — see stg_billing__customers.
+
+      - name: plan_mix
+        description: >
+          Every distinct plan this customer has ever held, comma-
+          separated (e.g. "growth, starter"). NULL for a customer with
+          no valid subscription at all.
+
+      - name: current_subscription_status
+        description: >
+          Status of this customer's most recent subscription by
+          start_date. NULL for a customer with no valid subscription.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['active', 'cancelled', 'paused']
+              config:
+                # A customer with zero subscriptions has NULL here, which
+                # is correct, not a defect — accepted_values already
+                # passes NULLs through (NOT IN evaluates to unknown, not
+                # true), so this isn't strictly needed for that case, but
+                # warn keeps any genuinely unexpected value visible
+                # without failing the build over it.
+                severity: warn
+
+      - name: ltv
+        description: Realized revenue (sum of paid invoice amounts, in EUR).
+        tests:
+          - not_null
+
+  - name: mart_churn
+    description: >
+      Monthly churn, two ways: subscription_churn_rate (count-based) and
+      mrr_churn_rate (revenue-weighted). "Active at the start of month"
+      means active during the prior month — the base being measured
+      against — not the current month's own activity. Churn events are
+      keyed on effective_end_date (int_subscriptions__effective_dates),
+      not raw end_date.
+    columns:
+      - name: month_start
+        tests:
+          - unique
+          - not_null
+
+      - name: subscription_churn_rate
+        description: churned_subscriptions / active_subscriptions_start.
+
+      - name: mrr_churn_rate
+        description: churned_mrr / mrr_start.

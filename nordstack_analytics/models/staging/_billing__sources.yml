@@ -1,0 +1,19 @@
+# Declares the raw tables dlt_pipeline.py loaded into Postgres's `raw`
+# schema, so staging models reference them via source() instead of
+# hardcoding schema/table names — one place to update if that ever moves,
+# and it's what makes dbt source freshness checks possible later.
+
+version: 2
+
+sources:
+  - name: billing
+    description: >
+      Raw NordStack billing tables, synced from the simulated MySQL
+      source system via the dlt pipeline in ingestion/dlt_pipeline.py.
+      Deliberately unclean — see docs/DATA_QUALITY.md for the full list
+      of planted defects this layer is responsible for catching.
+    schema: raw
+    tables:
+      - name: customers
+      - name: subscriptions
+      - name: invoices

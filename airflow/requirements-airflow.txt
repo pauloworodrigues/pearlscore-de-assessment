@@ -1,0 +1,29 @@
+# Airflow's own dependencies -- installed into a SEPARATE virtual
+# environment from the rest of this project (../requirements.txt). See
+# "Why Airflow gets its own virtual environment" in airflow/README.md:
+# every Airflow 2.x release hard-pins sqlalchemy<2.0, which conflicts
+# directly with the sqlalchemy==2.* the dbt/dlt stack needs -- a real
+# dependency conflict, not a Windows-specific one, and not fixable by
+# loosening either side's pin without risking the pipeline that's
+# already built and tested.
+#
+# This venv never needs dbt-core, dlt, or their dependencies: the DAG's
+# BashOperator tasks just shell out to the `dbt` executable living in
+# the main project's venv, by absolute path (see DBT_EXECUTABLE_PATH in
+# airflow/README.md).
+apache-airflow>=2.8,<3.0  # pinned below 3.0: this DAG's design (see its
+                           # docstring) targets Airflow 2.x semantics, and
+                           # unpinned pip resolves to the newest release --
+                           # Airflow 3.x shipped major internal changes this
+                           # DAG hasn't been vetted against.
+# astronomer-cosmos==1.*   # NOT currently installed here -- would render
+                           # the dbt project as per-model Airflow tasks,
+                           # matching NordStack's real Airflow setup, but
+                           # its openlineage-sql dependency has no prebuilt
+                           # Windows wheel and needs a Rust + MSVC C++
+                           # toolchain to build from source. See
+                           # airflow/dags/nordstack_dbt_dag.py's docstring
+                           # for the full story and the git commit before
+                           # this one for the working Cosmos version.
+                           # Uncomment on Linux/macOS, or on Windows with
+                           # the Visual Studio C++ Build Tools installed.

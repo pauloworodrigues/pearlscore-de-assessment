@@ -1,0 +1,48 @@
+# Our own scratch notes — never part of the submission.
+NOTES.md
+
+# Python virtual environments — machine-specific, huge, and reproducible
+# from requirements.txt / airflow/requirements-airflow.txt alone. Never
+# commit these. (.venv-airflow/ is the separate venv Airflow gets — see
+# "Why Airflow gets its own virtual environment" in airflow/README.md.)
+.venv/
+airflow/.venv-airflow/
+__pycache__/
+*.pyc
+
+# dlt — real (if throwaway) local credentials. example.secrets.toml is the
+# committed template; this is the file it gets copied to. Lives at the repo
+# root (not under ingestion/) because dlt resolves .dlt relative to the
+# current working directory you RUN the script from, not the script's own
+# location — and we always run it as `python ingestion/dlt_pipeline.py`
+# from the repo root.
+.dlt/secrets.toml
+
+# Machine-specific Docker port remap — see the file itself for why. Never
+# part of the submission; docker-compose.yml alone matches the brief.
+docker-compose.override.yml
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# dbt — build artifacts and downloaded packages, both fully reproducible
+# from the project files (dbt_project.yml, packages.yml) plus a fresh
+# `dbt deps` / `dbt build`. profiles.yml itself isn't here because it
+# isn't even in the repo — it lives at ~/.dbt/profiles.yml by dbt
+# convention (see profiles.yml.example for the committed template).
+nordstack_analytics/target/
+nordstack_analytics/dbt_packages/
+nordstack_analytics/logs/
+# dbt also writes logs/ at the invocation directory, which is wherever a
+# command happened to be run from (repo root or nordstack_analytics/,
+# depending on habit) — ignoring it at both locations rather than
+# depending on always cd-ing into the same place first.
+logs/
+
+# We'll extend this as we add each remaining piece (Airflow logs, etc.)
+# rather than pre-guessing it all now.
+airflow/docker/.user.yml
+# dbt-generated, machine-specific telemetry ID -- never part of the submission.

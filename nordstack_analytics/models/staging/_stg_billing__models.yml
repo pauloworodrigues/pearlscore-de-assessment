@@ -1,0 +1,168 @@
+version: 2
+
+models:
+  - name: stg_billing__customers
+    description: >
+      One row per customer, deduplicated. Cleaned from the raw customers
+      source: exact-duplicate rows removed, blank country normalized to
+      NULL. The future-dated created_at defect is intentionally left
+      untouched — see the not_future_date test below.
+    columns:
+      - name: customer_id
+        description: Business key for a customer, unique after dedup.
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_name
+        tests:
+          - not_null
+
+      - name: created_at
+        description: >
+          Date the customer record was created. Should never be in the
+          future — a violation here is a planted defect (C0041), and per
+          docs/INGESTION.md, exactly this kind of value is what corrupted
+          the incremental sync cursor in step 0.
+        tests:
+          - not_future_date:
+              config:
+                # warn, not error: this test's entire job is to prove we
+                # caught the planted defect, not to fail the build. See
+                # docs/DATA_QUALITY.md / the brief's "tests on raw/staging
+                # should catch them; dbt build must exit green" requirement.
+                severity: warn
+
+  - name: stg_billing__subscriptions
+    description: >
+      One row per subscription, deduplicated. Negative prices corrected
+      via abs(), end_date nulled out where it preceded start_date (see
+      this model's SQL for why nulling replaced an earlier swap-based
+      fix), status casing normalized. Rows with no matching customer are
+      kept, not dropped (see the inline comments in this model's SQL for
+      why) and flagged via has_valid_customer.
+    columns:
+      - name: subscription_id
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__customers')
+                field: customer_id
+              config:
+                # warn: we already know S00011 -> C9999 is a planted
+                # orphan (docs/DATA_QUALITY.md #7) and deliberately kept
+                # it — this test's job is to keep that visible, not to
+                # fail the build over a known, documented case.
+                severity: warn
+
+      - name: monthly_price
+        tests:
+          - not_null
+
+      - name: had_negative_price_defect
+        description: >
+          True if this row's raw monthly_price was negative before the
+          abs() correction (planted defect #6, S00048). Should always be
+          false post-fix for any row we haven't specifically reviewed.
+        tests:
+          - flag_equals:
+              arguments:
+                value: false
+              config:
+                severity: warn
+
+      - name: has_valid_customer
+        description: >
+          False if customer_id doesn't exist in stg_billing__customers
+          (planted defect #7, S00011 -> C9999). Kept rather than dropped
+          — see this model's SQL for the reasoning.
+        tests:
+          - flag_equals:
+              arguments:
+                value: true
+              config:
+                severity: warn
+
+      - name: status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['active', 'cancelled', 'paused']
+
+  - name: stg_billing__invoices
+    description: >
+      One row per invoice. Negative amounts corrected via abs(), blank
+      amounts left NULL (nothing to recover), status casing/whitespace
+      normalized, SEK amounts converted to EUR via convert_to_eur().
+      Rows with no matching subscription are kept, not dropped, same
+      reasoning as the orphan-customer case in stg_billing__subscriptions.
+    columns:
+      - name: invoice_id
+        tests:
+          - unique
+          - not_null
+
+      - name: subscription_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_billing__subscriptions')
+                field: subscription_id
+              config:
+                # warn: I000601 -> S99999 is a known planted orphan
+                # (docs/DATA_QUALITY.md #13), kept deliberately.
+                severity: warn
+
+      - name: had_missing_amount_defect
+        description: >
+          True if this row's raw amount was blank (planted defect #9,
+          I000322). amount/amount_eur are NULL for these rows rather
+          than a guessed value.
+        tests:
+          - flag_equals:
+              arguments:
+                value: false
+              config:
+                severity: warn
+
+      - name: had_negative_amount_defect
+        description: >
+          True if this row's raw amount was negative before the abs()
+          correction (planted defect #12, cascades from #6 via S00048).
+        tests:
+          - flag_equals:
+              arguments:
+                value: false
+              config:
+                severity: warn
+
+      - name: has_valid_subscription
+        description: >
+          False if subscription_id doesn't exist in
+          stg_billing__subscriptions (planted defect #13, I000601 ->
+          S99999). Kept rather than dropped.
+        tests:
+          - flag_equals:
+              arguments:
+                value: true
+              config:
+                severity: warn
+
+      - name: status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['paid', 'failed', 'open']
+
+      - name: currency
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['EUR', 'SEK']

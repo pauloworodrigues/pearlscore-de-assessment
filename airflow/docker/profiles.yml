@@ -1,0 +1,23 @@
+# dbt connection profile for the Airflow container -- NOT the same file as
+# ~/.dbt/profiles.yml on the host (see ../../profiles.yml.example for
+# that one). The only difference is the host: this one uses the Docker
+# Compose service name `postgres` and its container-internal port 5432,
+# since the host-machine port remap in docker-compose.override.yml
+# (5433, see that file's own comment) only affects connections from
+# OUTSIDE the Docker network -- containers on the same Compose network
+# always reach each other by service name on the container's own port.
+# Same database, same data either way: this is the same Postgres
+# container the host's dbt/dlt commands already write to.
+
+nordstack_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: postgres
+      port: 5432
+      user: dbt_user
+      password: dbt_password
+      dbname: analytics
+      schema: dbt_dev
+      threads: 4

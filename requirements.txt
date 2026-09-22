@@ -1,0 +1,30 @@
+# --- step 0: seed_mysql.py ---
+pandas==2.*
+sqlalchemy==2.*
+pymysql==1.1.*          # the MySQL driver SQLAlchemy uses under the hood
+cryptography             # pymysql needs this for MySQL 8's default auth
+                          # (caching_sha2_password) — without it, connecting
+                          # fails with an auth plugin error, not a missing
+                          # package error, which is confusing to debug blind.
+
+# --- step 0: dlt_pipeline.py ---
+dlt[postgres]==1.*        # the [postgres] extra pulls in psycopg2-binary,
+                           # the driver dlt needs to write into Postgres.
+
+# more sections get added here as we build each later piece
+# (dbt, airflow, sqlfluff, ...) rather than guessing them all now.
+
+# --- dbt project (nordstack_analytics/) ---
+dbt-core==1.*
+dbt-postgres==1.*
+
+# --- orchestration (airflow/) ---
+# apache-airflow is deliberately NOT listed here -- see
+# airflow/requirements-airflow.txt and airflow/README.md's "Why Airflow
+# gets its own virtual environment" section. Short version: every
+# Airflow 2.x release hard-pins sqlalchemy<2.0, which directly conflicts
+# with the sqlalchemy==2.* this project's dbt/dlt stack needs -- not a
+# Windows quirk, a real, unresolvable pin conflict on any OS. Airflow is
+# installed into its own venv instead, and its DAG only ever shells out
+# to this venv's `dbt` by absolute path, so the two never need to share
+# a dependency tree.

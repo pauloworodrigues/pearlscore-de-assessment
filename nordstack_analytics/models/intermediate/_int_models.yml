@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: int_subscriptions__effective_dates
+    description: >
+      One row per subscription, adding effective_end_date: end_date as
+      given, or — for a cancelled subscription with no reliable end_date
+      — that subscription's own last invoice date as the best available
+      evidence of when billing stopped. Shared by the MRR, LTV, and churn
+      marts so they all agree on what "active" means for a given
+      subscription in a given month.
+    columns:
+      - name: subscription_id
+        tests:
+          - unique
+          - not_null
+
+      - name: effective_end_date_is_inferred
+        description: >
+          True when effective_end_date came from the last-invoice
+          fallback rather than a real end_date — lets downstream models
+          and analysts distinguish an observed date from an inferred one
+          instead of treating them identically.
+
+  - name: int_subscriptions__monthly
+    description: >
+      One row per subscription per calendar month it was active. The
+      real logic behind MRR-by-month: what "active this month" means,
+      built on effective_end_date rather than raw end_date.
+    columns:
+      - name: month_start
+        tests:
+          - not_null
+
+  - name: int_customers__revenue
+    description: >
+      One row per customer with invoice activity, aggregated by status
+      (paid/open/failed totals in EUR). Real logic behind
+      mart_customer_ltv. Orphan invoices/subscriptions (#13, #7) are
+      excluded here via inner joins, not silently — see this model's
+      SQL.
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+
+  - name: int_subscriptions__churn
+    description: >
+      One row per month: subscriptions/MRR active at the start of the
+      month, vs. subscriptions/MRR that churned during it. Real logic
+      behind mart_churn.
+    columns:
+      - name: month_start
+        tests:
+          - unique
+
+  - name: int_customers__subscription_summary
+    description: >
+      One row per customer with a valid subscription: plan_mix (every
+      distinct plan they've ever held) and current_subscription_status
+      (the status of their most recent subscription by start_date).
+      Second half of the LTV mart's requirements, alongside
+      int_customers__revenue -- kept separate because this model's scope
+      is wider (all subscriptions, not just ones with invoice activity).
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - not_null
+
+      - name: current_subscription_status
+        description: >
+          Status of this customer's most recent subscription by
+          start_date. Not the same as "does this customer currently pay
+          us" -- a customer's most recent subscription could itself be
+          paused or cancelled.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['active', 'cancelled', 'paused']

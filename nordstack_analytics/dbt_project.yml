@@ -1,0 +1,50 @@
+# NordStack billing analytics.
+#
+# Layering: staging (1:1 with raw sources, light cleaning + defect
+# handling) -> intermediate (shared business logic multiple marts need —
+# the date-spine join behind MRR, the last-invoice fallback behind churn,
+# the per-customer aggregations behind LTV) -> marts (the actual business
+# answers: MRR, LTV, churn, deliberately thin on top of intermediate).
+# See the root README's "Key modeling decisions" for the full reasoning
+# behind each layer.
+
+name: 'nordstack_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'nordstack_analytics'  # matches the profile name in profiles.yml
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  nordstack_analytics:
+    staging:
+      # Views: staging is cheap to compute and read once per downstream
+      # model build; no reason to pay storage/refresh cost materializing it.
+      +materialized: view
+      +schema: staging
+    intermediate:
+      # Tables, not views: every model in this layer is read by MULTIPLE
+      # marts (MRR, LTV, churn), so a view would recompute its full query
+      # -- the date-spine join in int_subscriptions__monthly, the
+      # last-invoice aggregation in int_subscriptions__effective_dates --
+      # from scratch on every single mart build that references it.
+      # Computing once per dbt run and reading many times is the whole
+      # point of this layer existing, so table is the materialization
+      # that actually delivers that.
+      +materialized: table
+      +schema: intermediate
+    marts:
+      # Tables: marts are the actual deliverable — queried repeatedly by
+      # whoever consumes this (a BI tool, an analyst), so paying the build
+      # cost once beats recomputing on every read.
+      +materialized: table
+      +schema: marts
